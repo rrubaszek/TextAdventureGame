@@ -260,6 +260,14 @@ getPlayerPower ps = sum $ mapMaybe (`Map.lookup` weaponPower) (inventory ps)
 clearScreen :: IO ()
 clearScreen = putStr "\ESC[2J\ESC[H"
 
+-- POPRAWIONA funkcja dla kluczy podziemi
+addUndergroundKey :: PlayerState -> PlayerState
+addUndergroundKey ps = ps { undergroundKeys = undergroundKeys ps + 1 }
+
+-- POPRAWIONA funkcja sprawdzająca i używająca klucze
+useKeys :: Int -> PlayerState -> PlayerState
+useKeys keysToUse ps = ps { undergroundKeys = max 0 (undergroundKeys ps - keysToUse) }
+
 -- Funkcja rozwiązywania zagadek
 solvePuzzle :: Puzzle -> PlayerState -> IO PlayerState
 solvePuzzle puzzle ps = do
@@ -283,7 +291,9 @@ solvePuzzle puzzle ps = do
             case puzzleReward puzzle of
                 Just reward -> do
                     putStrLn $ "Otrzymujesz: " ++ reward
-                    return $ addItem reward newState
+                    if reward == "Klucz Podziemi"
+                    then return $ addUndergroundKey $ addItem reward newState
+                    else return $ addItem reward newState
                 Nothing -> return newState
         else do
             putStrLn "Niepoprawna odpowiedź. Spróbuj ponownie później."
@@ -349,7 +359,7 @@ fightSequence enemy ps = do
             Just reward -> do
                 putStrLn $ "Otrzymujesz nagrodę: " ++ reward ++ "!"
                 if reward == "Klucz Podziemi"
-                then return $ newState { undergroundKeys = undergroundKeys newState + 1 }
+                then return $ addUndergroundKey $ addItem reward newState
                 else if reward == "Korona Władzy"
                 then return $ addItem reward $ newState { hasCrown = True }
                 else return $ addItem reward newState
@@ -368,9 +378,16 @@ getDefeatLocation enemy
     | "Strażnik" `elem` words enemy || "Władca" `elem` words enemy = "underground_entrance"
     | otherwise = "start"
 
--- Funkcja sprawdzająca czy gracz może przejść na następny poziom podziemi
+-- POPRAWIONA funkcja sprawdzająca czy gracz może przejść na następny poziom podziemi
 canDescendLevel :: PlayerState -> UndergroundLevel -> Bool
 canDescendLevel ps level = undergroundKeys ps >= requiredKeys level
+
+-- POPRAWIONA funkcja przejścia na następny poziom
+descendToLevel :: PlayerState -> UndergroundLevel -> PlayerState
+descendToLevel ps level = 
+    let newKeys = undergroundKeys ps - requiredKeys level
+        newLevel = levelId level + 1
+    in ps { currentLevel = newLevel, undergroundKeys = newKeys }
 
 -- Świat gry z podziemiami
 world :: World
@@ -684,12 +701,13 @@ world = Map.fromList $ map (\r -> (roomId r, r)) [
             if roll <= 7
             then do
                 putStrLn "Znajdujesz Klucz Podziemi wśród kości!"
-                return $ markVisited "search_bones" $ ps { undergroundKeys = undergroundKeys ps + 1 }
+                return $ markVisited "search_bones" $ addUndergroundKey $ addItem "Klucz Podziemi" ps
             else do
                 putStrLn "Nic wartościowego tutaj nie ma."
                 return $ markVisited "search_bones" ps
     ) False Nothing True,
 
+    -- POPRAWIONY pokój przejścia na poziom 2
     Room "descend_level2" "Próbujesz zejść głębiej..." [
         ("Wróć do sali", "skeleton_hall"),
         ("Zejdź na poziom 2", "deeper_tunnel")
@@ -700,7 +718,10 @@ world = Map.fromList $ map (\r -> (roomId r, r)) [
                 if canDescendLevel ps lvl
                 then do
                     putStrLn "Używasz kluczy i otwierasz przejście na następny poziom!"
-                    return ps { currentLevel = 2, undergroundKeys = undergroundKeys ps - requiredKeys lvl }
+                    putStrLn $ "Używasz " ++ show (requiredKeys lvl) ++ " kluczy."
+                    let newState = descendToLevel ps lvl
+                    putStrLn $ "Pozostało ci " ++ show (undergroundKeys newState) ++ " kluczy."
+                    return newState
                 else do
                     putStrLn $ "Potrzebujesz " ++ show (requiredKeys lvl) ++ " kluczy, aby przejść dalej!"
                     putStrLn $ "Masz tylko " ++ show (undergroundKeys ps) ++ " kluczy."
@@ -712,6 +733,7 @@ world = Map.fromList $ map (\r -> (roomId r, r)) [
     Room "deeper_tunnel" "Głębsze tunele. Powietrze jest gęste od magii." [
         ("Idź do Labiryntu Cieni", "shadow_maze"),
         ("Idź do Starożytnej Biblioteki", "ancient_library"),
+        ("Zejdź na poziom 3", "descend_level3"),
         ("Wróć na poziom 1", "underground_entrance")
     ] (\ps -> do
         putStrLn $ "Jesteś na poziomie " ++ show (currentLevel ps) ++ " podziemi."
@@ -729,6 +751,7 @@ world = Map.fromList $ map (\r -> (roomId r, r)) [
 
     Room "shadow_maze" "Jesteś w Labiryncie Cieni. Ciemność zdaje się żyć własnym życiem..." [
         ("Spróbuj znaleźć wyjście", "shadow_riddle"),
+        ("Walcz z Władcą Cieni", "fight_shadow_lord"),
         ("Wróć do tunelu", "deeper_tunnel")
     ] return False Nothing True,
 
@@ -736,8 +759,20 @@ world = Map.fromList $ map (\r -> (roomId r, r)) [
         ("Wróć do labiryntu", "shadow_maze")
     ] (\ps -> solvePuzzle (riddlePuzzles !! 1) ps) False (Just (riddlePuzzles !! 1)) True,
 
+    Room "fight_shadow_lord" "Walka z Władcą Cienia!" [
+        ("Wróć do labiryntu", "shadow_maze")
+    ] (\ps -> do
+        if isEnemyDefeated "Władca Cieni" ps
+        then do
+            putStrLn "Pokonałeś już Władcę Cienia. Ciemność słabnie..."
+            return ps
+        else
+            fightSequence shadowLordEnemy ps
+    ) False Nothing True,
+
     Room "ancient_library" "Starożytna Biblioteka pełna zapomnianych ksiąg i magicznych artefaktów." [
         ("Przeszukaj półki", "library_search"),
+        ("Rozwiąż zagadkę biblioteki", "library_riddle"),
         ("Wróć do tunelu", "deeper_tunnel")
     ] return False Nothing True,
 
@@ -749,26 +784,48 @@ world = Map.fromList $ map (\r -> (roomId r, r)) [
             putStrLn "Już wcześniej przeszukałeś to miejsce."
             return ps
         else do
-            putStrLn "Znajdujesz Pierścień Mocy! Czujesz, jak twoja siła rośnie."
-            return $ markVisited "library_search" $ addItem "Pierścień Mocy" ps
+            putStrLn "Znajdujesz Klucz Podziemi ukryty w starożytnej księdze!"
+            putStrLn "Klucz świeci magicznym światłem."
+            return $ markVisited "library_search" $ addUndergroundKey $ addItem "Klucz Podziemi" ps
     ) False Nothing True,
 
-    Room "fight_shadow_lord" "Walka z Władcą Cienia!" [
-        ("Wróć do tunelu", "deeper_tunnel")
+    Room "library_riddle" "Zagadka Biblioteki" [
+        ("Wróć do biblioteki", "ancient_library")
+    ] (\ps -> solvePuzzle (riddlePuzzles !! 2) ps) False (Just (riddlePuzzles !! 2)) True,
+
+    -- POPRAWIONY pokój przejścia na poziom 3
+    Room "descend_level3" "Próbujesz zejść na najgłębszy poziom..." [
+        ("Wróć do tunelu", "deeper_tunnel"),
+        ("Zejdź na poziom 3", "final_chamber")
     ] (\ps -> do
-        if isEnemyDefeated "Władca Cienia" ps
-        then do
-            putStrLn "Pokonałeś już Władcę Cienia. Ciemność słabnie..."
-            return ps
-        else
-            fightSequence shadowLordEnemy ps
+        let currentLvl = findLevel 2 undergroundLevels
+        case currentLvl of
+            Just lvl -> do
+                if canDescendLevel ps lvl
+                then do
+                    putStrLn "Używasz kluczy i otwierasz przejście na najgłębszy poziom!"
+                    putStrLn $ "Używasz " ++ show (requiredKeys lvl) ++ " kluczy."
+                    let newState = descendToLevel ps lvl
+                    putStrLn $ "Pozostało ci " ++ show (undergroundKeys newState) ++ " kluczy."
+                    putStrLn "Wkraczasz do ostatnich komnat podziemi..."
+                    return newState
+                else do
+                    putStrLn $ "Potrzebujesz " ++ show (requiredKeys lvl) ++ " kluczy, aby przejść dalej!"
+                    putStrLn $ "Masz tylko " ++ show (undergroundKeys ps) ++ " kluczy."
+                    putStrLn "Musisz zdobyć więcej kluczy z tego poziomu."
+                    return ps
+            Nothing -> return ps
     ) False Nothing True,
 
-
-    Room "final_chamber" "Ostatnia komnata. Przed tobą stoi Strażnik Korony Władzy." [
+    -- PODZIEMIA - POZIOM 3 (FINAŁOWY)
+    Room "final_chamber" "Ostatnia komnata. Powietrze drży od starożytnej magii. Przed tobą stoi Strażnik Korony Władzy." [
         ("Walcz ze Strażnikiem!", "fight_crown_guardian"),
         ("Wróć na poziom 2", "deeper_tunnel")
-    ] return False Nothing True,
+    ] (\ps -> do
+        putStrLn $ "Jesteś na poziomie " ++ show (currentLevel ps) ++ " podziemi - najgłębszym poziomie!"
+        putStrLn "Czujesz moc emanującą z Korony Władzy..."
+        return ps
+    ) False Nothing True,
 
     Room "fight_crown_guardian" "Walka z Finałowym Strażnikiem!" [
         ("Wróć do komnaty", "final_chamber"),
@@ -777,80 +834,115 @@ world = Map.fromList $ map (\r -> (roomId r, r)) [
         if isEnemyDefeated "Strażnik Korony" ps
         then do
             putStrLn "Strażnik został już pokonany. Droga do tronu jest wolna..."
+            putStrLn "Słyszysz echo kroków w sali tronowej..."
             return ps
         else do
             result <- fightSequence crownGuardianEnemy ps
             if isEnemyDefeated "Strażnik Korony" result
             then do
                 putStrLn "Pokonałeś Strażnika Korony! Drzwi do Sali Tronowej otwierają się z hukiem..."
+                putStrLn "Złote światło wypływa z komnaty..."
                 return result
             else return result
     ) False Nothing True,
 
-    Room "throne_room" "Wkroczyłeś do Sali Tronowej. Na piedestale lśni Korona Władzy." [
+    Room "throne_room" "Wkroczyłeś do Sali Tronowej. Na piedestale lśni Korona Władzy - cel twojej wyprawy." [
         ("Zasiądź na tronie i załóż koronę", "game_end")
     ] (\ps -> do
         if hasCrown ps
         then do
             putStrLn "Już zdobyłeś Koronę. Tron czeka na twe decyzje..."
+            putStrLn "Czujesz moc płynącą przez twoje żyły..."
             return ps
         else do
             putStrLn "Zbliżasz się do Korony... Jej moc przenika twoją duszę."
             putStrLn "Zakładasz ją na głowę. Czujesz przypływ siły i przeznaczenia."
+            putStrLn "Jesteś teraz władcą tych ziem!"
             return ps { hasCrown = True }
     )
     True Nothing True,
 
     Room "game_end" "Zasiadasz na tronie. Korona Władzy błyszczy na twej głowie. Przeznaczenie się wypełniło." 
-    [] return False Nothing True
+    [("Gra zakończona", "game_end")] (\ps -> do
+        putStrLn "\n=== GRATULACJE! ==="
+        putStrLn "Ukończyłeś swoją epickou wyprawę!"
+        putStrLn "Zdobyłeś Koronę Władzy i zasiadłeś na tronie!"
+        putStrLn "\nTwoje osiągnięcia:"
+        putStrLn $ "- Pokonani wrogowie: " ++ show (length (defeatedEnemies ps))
+        putStrLn $ "- Rozwiązane zagadki: " ++ show (length (solvedPuzzles ps))
+        putStrLn $ "- Odwiedzone pokoje: " ++ show (length (visitedRooms ps))
+        putStrLn $ "- Przedmioty w ekwipunku: " ++ show (length (inventory ps))
+        putStrLn $ "- Łączna siła: " ++ show (getPlayerPower ps)
+        putStrLn "\nJesteś teraz legendą!"
+        return ps
+    ) True Nothing True
     ]   
 
--- Główna pętla gry
+-- Główna pętla gry z lepszym obsługiwaniem błędów
 play :: PlayerState -> World -> IO ()
 play ps worldMap = do
     clearScreen
-    let currentRoom = fromJust (Map.lookup (location ps) worldMap)
-    putStrLn $ "\n== " ++ roomId currentRoom ++ " =="
-    putStrLn $ desc currentRoom
+    case Map.lookup (location ps) worldMap of
+        Nothing -> do
+            putStrLn $ "BŁĄD: Nie można znaleźć pokoju: " ++ location ps
+            putStrLn "Gra zostanie zakończona."
+            return ()
+        Just currentRoom -> do
+            putStrLn $ "\n== " ++ roomId currentRoom ++ " =="
+            putStrLn $ desc currentRoom
 
-    -- Efekt pokoju
-    ps' <- effect currentRoom ps
-    if not (alive ps')
-    then do
-        putStrLn "\nZginąłeś. KONIEC GRY."
-        putStrLn "Naciśnij Enter, aby zakończyć..."
-        _ <- getLine
-        return ()
-    else if isEnd currentRoom
-    then do
-        putStrLn "\nKONIEC GRY - ZWYCIĘSTWO!"
-        putStrLn "Naciśnij Enter, aby zakończyć..."
-        _ <- getLine
-        return ()
-    else do
-        let allOptions = options currentRoom ++ [("Pokaż ekwipunek", "inventory")]
-        putStrLn ""
-        mapM_ (\(i, (desc, _)) -> putStrLn $ show i ++ ". " ++ desc) (zip [1..] allOptions)
-        putStr "\nTwój wybór: "
-        hFlush stdout
-        choice <- getLine
-        let maybeIndex = reads choice :: [(Int, String)]
-        case maybeIndex of
-            [(n, _)] | n > 0 && n <= length allOptions -> do
-                let (_, nextAction) = allOptions !! (n - 1)
-                if nextAction == "inventory"
-                then do
-                    showInventory ps'
-                    play ps' worldMap
-                else
-                    play ps' { location = nextAction } worldMap
-            _ -> do
-                putStrLn "Nieprawidłowy wybór. Spróbuj jeszcze raz."
-                putStrLn "Naciśnij Enter, aby kontynuować..."
+            -- Efekt pokoju
+            ps' <- effect currentRoom ps
+            if not (alive ps')
+            then do
+                putStrLn "\nZginąłeś. KONIEC GRY."
+                putStrLn "Naciśnij Enter, aby zakończyć..."
                 _ <- getLine
-                play ps' worldMap
+                return ()
+            else if isEnd currentRoom
+            then do
+                putStrLn "\nKONIEC GRY - ZWYCIĘSTWO!"
+                putStrLn "Naciśnij Enter, aby zakończyć..."
+                _ <- getLine
+                return ()
+            else do
+                let allOptions = options currentRoom ++ [("Pokaż ekwipunek", "inventory")]
+                putStrLn ""
+                mapM_ (\(i, (desc, _)) -> putStrLn $ show i ++ ". " ++ desc) (zip [1..] allOptions)
+                putStr "\nTwój wybór: "
+                hFlush stdout
+                choice <- getLine
+                let maybeIndex = reads choice :: [(Int, String)]
+                case maybeIndex of
+                    [(n, _)] | n > 0 && n <= length allOptions -> do
+                        let (_, nextAction) = allOptions !! (n - 1)
+                        if nextAction == "inventory"
+                        then do
+                            showInventory ps'
+                            play ps' worldMap
+                        else
+                            play ps' { location = nextAction } worldMap
+                    _ -> do
+                        putStrLn "Nieprawidłowy wybór. Spróbuj jeszcze raz."
+                        putStrLn "Naciśnij Enter, aby kontynuować..."
+                        _ <- getLine
+                        play ps' worldMap
 
--- Start gry
+-- Funkcja pomocnicza do debugowania stanu gry
+debugState :: PlayerState -> IO ()
+debugState ps = do
+    putStrLn "\n=== DEBUG INFO ==="
+    putStrLn $ "Lokalizacja: " ++ location ps
+    putStrLn $ "Poziom podziemi: " ++ show (currentLevel ps)
+    putStrLn $ "Klucze podziemi: " ++ show (undergroundKeys ps)
+    putStrLn $ "Ekwipunek: " ++ show (inventory ps)
+    putStrLn $ "Pokonani wrogowie: " ++ show (defeatedEnemies ps)
+    putStrLn $ "Rozwiązane zagadki: " ++ show (solvedPuzzles ps)
+    putStrLn $ "Ma Talizman: " ++ show (hasTalisman ps)
+    putStrLn $ "Ma Koronę: " ++ show (hasCrown ps)
+    putStrLn "=================="
+
+-- Start gry z wprowadzeniem
 main :: IO ()
 main = do
     clearScreen
@@ -860,6 +952,7 @@ main = do
     putStrLn "Jeśli przegrasz walkę, nie zginiesz - budzisz się bez ekwipunku, ale możesz kontynuować!"
     putStrLn "\nNaciśnij Enter, aby rozpocząć przygodę..."
     _ <- getLine
+    
     let initialState = PlayerState { 
         location = "start", 
         inventory = [], 
@@ -872,4 +965,6 @@ main = do
         hasTalisman = False,
         hasCrown = False
     }
+    
+    putStrLn "🌟 Gra rozpoczęta! Powodzenia, bohaterze! 🌟"
     play initialState world
