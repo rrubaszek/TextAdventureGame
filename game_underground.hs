@@ -1236,25 +1236,11 @@ debugState ps = do
 main :: IO ()
 main = do
     clearScreen
-    putStrLn "================================================================"
-    putStrLn "            🏰 PRZYGODA: TALIZMAN LOSU 🏰"
-    putStrLn "================================================================"
-    putStrLn ""
-    putStrLn "W tej epickie przygodzie będziesz poszukiwać legendarnej Korony Władzy!"
-    putStrLn ""
-    putStrLn "🗡️  WALKA: Zbieraj bronie, które zwiększają twoją siłę w walce"
-    putStrLn "🔑 KLUCZE: Znajdź klucze podziemi, aby przejść na głębsze poziomy"
-    putStrLn "🧩 ZAGADKI: Rozwiązuj zagadki, aby zdobyć nagrody"
-    putStrLn "💀 PORAŻKA: Jeśli przegrasz walkę, nie zginiesz - stracisz tylko ekwipunek"
-    putStrLn ""
-    putStrLn "📊 SYSTEM KLUCZY PODZIEMI:"
-    putStrLn "   • Poziom 1 → 2: potrzebny 1 klucz"
-    putStrLn "   • Poziom 2 → 3: potrzebne 2 klucze"  
-    putStrLn "   • Poziom 3: finałowy poziom z Koroną"
-    putStrLn ""
-    putStrLn "Zdobądź Talizman od trolla, aby wejść do podziemi!"
-    putStrLn ""
-    putStrLn "Naciśnij Enter, aby rozpocząć swoją legendę..."
+     putStrLn "=== Przygoda: Talizman Losu ==="
+    putStrLn "\nW tej grze możesz znaleźć różne bronie, które pomogą ci w walce."
+    putStrLn "Każda broń ma swoją siłę, która dodaje się do twoich ataków!"
+    putStrLn "Jeśli przegrasz walkę, nie zginiesz - budzisz się bez ekwipunku, ale możesz kontynuować!"
+    putStrLn "\nNaciśnij Enter, aby rozpocząć przygodę..."
     _ <- getLine
     
     let initialState = PlayerState { 
