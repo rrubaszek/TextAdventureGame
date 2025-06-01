@@ -3,6 +3,7 @@ import System.Random
 import Data.Maybe
 import qualified Data.Map as Map
 import Data.List (nub, sort)
+import Data.Char (toLower)
 
 type RoomID = String
 type Item = String
@@ -72,11 +73,19 @@ weaponPower = Map.fromList [
     ("Ognisty młot", 3),
     ("Łuk elfów", 2),
     ("Runiczna siekiera", 3),
-    ("Klucz Podziemi", 0),  -- specjalny przedmiot
-    ("Korona Władzy", 0),   -- cel gry
-    ("Kryształowy Miecz", 4),  -- broń z podziemi
-    ("Płaszcz Cieni", 0),      -- magiczny przedmiot
-    ("Pierścień Mocy", 1)      -- dodatkowa moc
+    ("Berło Pustyni", 2),            -- nowa broń z pustyni
+    ("Naszyjnik Nomada", 1),         -- ochrona z pustyni  
+    ("Sztylet Beduina", 2),          -- broń z pustyni
+    ("Amulet Faraona", 3),           -- potężny artefakt z piramidy
+    ("Kodeks Mądrości", 1),          -- wiedza ze starożytnej księgi
+    ("Miecz Stróżów", 4),            -- potężna broń z ruin
+    ("Tarcza Obrońców", 2),          -- obrona z ruin
+    ("Korona Przodków", 3),          -- artefakt z krypty
+    ("Klucz Podziemi", 0),           -- specjalny przedmiot
+    ("Korona Władzy", 0),            -- cel gry
+    ("Kryształowy Miecz", 4),        -- broń z podziemi
+    ("Płaszcz Cieni", 0),            -- magiczny przedmiot
+    ("Pierścień Mocy", 1)            -- dodatkowa moc
     ]
 
 -- Definicja rekurencyjnej struktury podziemi
@@ -152,6 +161,37 @@ witchEnemy = Enemy {
     defeatMessage = "Wiedźma krzyczy przeraźliwie i rozpływa się w dymie!",
     victoryMessage = "Wiedźma rzuca na ciebie czar snu... Budzisz się w lesie, oszołomiony i bez ekwipunku...",
     enemyReward = Nothing
+}
+
+-- Nowi przeciwnicy z powierzchni
+mummyEnemy :: Enemy
+mummyEnemy = Enemy {
+    enemyName = "starożytna mumia",
+    enemyStrength = 3,
+    attackMessages = [
+        "Mumia atakuje cię swoimi bandażami, próbując cię oplątać!",
+        "Starożytne przeklęstwo sprawia, że czujesz osłabienie!",
+        "Mumia wydaje przeraźliwy jęk, który paraliżuje twoją krew!",
+        "Zbutwiałe palce mumii próbują dosięgnąć twojej twarzy!"
+    ],
+    defeatMessage = "Mumia rozpada się w proch, jej przeklęcie zostaje złamane!",
+    victoryMessage = "Mumia oplata cię bandażami! Budzisz się przed piramidą...",
+    enemyReward = Nothing
+}
+
+guardianSpiritEnemy :: Enemy
+guardianSpiritEnemy = Enemy {
+    enemyName = "Duch Strażnika",
+    enemyStrength = 4,
+    attackMessages = [
+        "Duch przepływa przez cię, wysysając twoją energię życiową!",
+        "Spektralne pazury rozdzierają powietrze tuż obok twojej głowy!",
+        "Duch wyje przeraźliwie, próbując zastraszyć cię swoją mocą!",
+        "Zimne tchnienie ducha zamraża twoją krew w żyłach!"
+    ],
+    defeatMessage = "Duch Strażnika znika z głośnym westchnieniem, w końcu znajduje spokój!",
+    victoryMessage = "Duch wciąga cię w swój świat... Budzisz się przy wejściu do krypty...",
+    enemyReward = Just "Korona Przodków"
 }
 
 -- Nowi przeciwnicy z podziemi
@@ -375,6 +415,8 @@ getDefeatLocation :: String -> RoomID
 getDefeatLocation enemy
     | "troll" `elem` words enemy = "mountains"
     | "wiedźma" `elem` words enemy = "forest"
+    | "mumia" `elem` words enemy = "pyramid_entrance"
+    | "Duch" `elem` words enemy = "crypt_entrance"
     | "Strażnik" `elem` words enemy || "Władca" `elem` words enemy = "underground_entrance"
     | otherwise = "start"
 
@@ -393,10 +435,12 @@ descendToLevel ps level =
 world :: World
 world = Map.fromList $ map (\r -> (roomId r, r)) [ 
     -- POWIERZCHNIA
-    Room "start" "Stoisz na rozdrożu w magicznej krainie. Wiatr szumi przez trawy, a przed tobą rozciągają się trzy ścieżki." [ 
+    Room "start" "Stoisz na rozdrożu w magicznej krainie. Wiatr szumi przez trawy, a przed tobą rozciągają się różne ścieżki prowadzące do tajemniczych miejsc." [ 
         ("Idź na północ do gór", "mountains"), 
         ("Idź na wschód do lasu", "forest"), 
         ("Idź na południe do wioski", "village"),
+        ("Idź na zachód do pustyni", "desert"),
+        ("Idź na północny-wschód do ruin", "ancient_ruins"),
         ("Przeszukaj okolicę", "search_crossroads")
     ] return False Nothing False,
 
@@ -640,7 +684,253 @@ world = Map.fromList $ map (\r -> (roomId r, r)) [
         putStrLn "Starzec mówi powoli: 'Talizman... tak, znam tę legendę.'"
         putStrLn "'Znajduje się w jaskini trolla w górach. Ale uważaj, młody wojowniku...'"
         putStrLn "'Troll jest potężny. Będziesz potrzebował dobrej broni, by go pokonać.'"
+        putStrLn "'Słyszałem też o starożytnych ruinach na północnym wschodzie...'"
+        putStrLn "'Podobno kryją potężne artefakty, ale strzegą ich niesamowite stwory.'"
         return ps
+    ) False Nothing False,
+
+    -- NOWE LOKACJE NA POWIERZCHNI
+
+    -- PUSTYNIA
+    Room "desert" "Wkraczasz na gorącą pustynię. Piasek pali stopy, a słońce bezlitośnie praży z góry. W oddali majaczy oaza." [
+        ("Idź do oazy", "oasis"),
+        ("Przeszukaj wydmy", "sand_dunes"),
+        ("Wejdź do piramidy", "pyramid_entrance"),
+        ("Wróć na rozdroże", "start")
+    ] (\ps -> do
+        putStrLn "Gorące wiatry pustyni niosą ze sobą szepty starożytnych tajemnic..."
+        putStrLn "Piasek skrzypi pod twoimi stopami, a upał sprawia, że widzisz dziwne miraże."
+        return ps
+    ) False Nothing False,
+
+    Room "oasis" "Docierasz do błogiej oazy. Kryształowo czysta woda odbija promienie słońca, a palmy dają cenny cień." [
+        ("Napij się wody", "drink_oasis"),
+        ("Przeszukaj okolice palmy", "palm_search"),
+        ("Wróć na pustynię", "desert")
+    ] return False Nothing False,
+
+    Room "drink_oasis" "Pijesz ze źródła oazy..." [
+        ("Wróć do oazy", "oasis")
+    ] (\ps -> do
+        if hasVisited "drink_oasis" ps
+        then do
+            putStrLn "Ponownie pijesz orzeźwiającą wodę. Czujesz się wypoczęty."
+            return ps
+        else do
+            roll <- randomRIO (1, 10) :: IO Int
+            if roll <= 7
+            then do
+                putStrLn "Woda ma magiczne właściwości! Czujesz przypływ energii!"
+                putStrLn "Otrzymujesz Berło Pustyni - starożytny artefakt!"
+                return $ markVisited "drink_oasis" $ addItem "Berło Pustyni" ps
+            else do
+                putStrLn "Woda jest orzeźwiająca, ale nic więcej się nie dzieje."
+                return $ markVisited "drink_oasis" ps
+    ) False Nothing False,
+
+    Room "palm_search" "Przeszukujesz okolice dużej palmy..." [
+        ("Wróć do oazy", "oasis")
+    ] (\ps -> do
+        if hasVisited "palm_search" ps
+        then do
+            putStrLn "Już przeszukałeś to miejsce."
+            return ps
+        else do
+            putStrLn "Zakopany w piasku pod palmą znajdujesz starożytny naszyjnik!"
+            putStrLn "Naszyjnik Nomada - zapewnia ochronę przed żywiołami!"
+            return $ markVisited "palm_search" $ addItem "Naszyjnik Nomada" ps
+    ) False Nothing False,
+
+    Room "sand_dunes" "Wspinasz się na wysokie wydmy..." [
+        ("Wróć na pustynię", "desert")
+    ] (\ps -> do
+        if hasVisited "sand_dunes" ps
+        then do
+            putStrLn "Wydmy wyglądają tak samo jak wcześniej - nieskończone morze piasku."
+            return ps
+        else do
+            roll <- randomRIO (1, 10) :: IO Int
+            if roll <= 4
+            then do
+                putStrLn "Na szczycie wydmy znajdujesz burzę piaskową! Musisz się schronić!"
+                putStrLn "Gdy burza mija, widzisz przed sobą błyszczący przedmiot..."
+                putStrLn "To Sztylet Beduina - ostrze wykuwane przez nomadów!"
+                return $ markVisited "sand_dunes" $ addItem "Sztylet Beduina" ps
+            else do
+                putStrLn "Z wydmy rozpościera się wspaniały widok na pustynię, ale nic tu nie ma."
+                return $ markVisited "sand_dunes" ps
+    ) False Nothing False,
+
+    Room "pyramid_entrance" "Przed tobą wznosi się starożytna piramida. Wejście jest ciemne i groźne." [
+        ("Wejdź do piramidy", "pyramid_inside"),
+        ("Wróć na pustynię", "desert")
+    ] (\ps -> do
+        putStrLn "Hieroglify na ścianach piramidy pulsują słabym światłem..."
+        putStrLn "Czujesz starożytną magię emanującą z wnętrza."
+        return ps
+    ) False Nothing False,
+
+    Room "pyramid_inside" "Wnętrze piramidy jest pełne zagadek i pułapek. Nagle słyszysz szelest i widzisz mumię!" [
+        ("Walcz z mumią!", "fight_mummy"),
+        ("Uciekaj!", "pyramid_entrance")
+    ] return False Nothing False,
+
+    Room "fight_mummy" "Walka z mumią!" [
+        ("Przeszukaj sarkofag", "pyramid_treasure"),
+        ("Uciekaj z piramidy", "pyramid_entrance")
+    ] (\ps -> do
+        if isEnemyDefeated "starożytna mumia" ps
+        then do
+            putStrLn "Mumia leży nieruchomo. Jej bandaże się rozpadły."
+            putStrLn "Możesz teraz bezpiecznie przeszukać sarkofag."
+            return ps
+        else do
+            result <- fightSequence mummyEnemy ps
+            return result
+    ) False Nothing False,
+
+    Room "pyramid_treasure" "Przeszukujesz starożytny sarkofag..." [
+        ("Wyjdź z piramidy", "pyramid_entrance")
+    ] (\ps -> do
+        if hasVisited "pyramid_treasure" ps
+        then do
+            putStrLn "Sarkofag jest już pusty."
+            return ps
+        else do
+            putStrLn "W sarkofagu znajdujesz Amulet Faraona!"
+            putStrLn "Starożytny artefakt pulsuje mocą władców!"
+            return $ markVisited "pyramid_treasure" $ addItem "Amulet Faraona" ps
+    ) False Nothing False,
+
+    -- STAROŻYTNE RUINY
+    Room "ancient_ruins" "Docierasz do starożytnych ruin. Połamane kolumny i kamienne bloki są porośnięte bluszczem." [
+        ("Wejdź do głównej świątyni", "temple_main"),
+        ("Przeszukaj ruiny strażnicy", "guard_ruins"),
+        ("Zejdź do podziemnej krypty", "crypt_entrance"),
+        ("Wróć na rozdroże", "start")
+    ] (\ps -> do
+        putStrLn "Ruiny emanują starożytną mocą. Słyszysz echo dawnych czasów..."
+        putStrLn "Wiatr szumi przez połamane kolumny, niosąc ze sobą tajemnicze szepty."
+        return ps
+    ) False Nothing False,
+
+    Room "temple_main" "Główna świątynia jest imponująca mimo zniszczeń. Na ołtarzu leży starożytna księga." [
+        ("Przeczytaj księgę", "read_ancient_book"),
+        ("Przeszukaj ołtarz", "altar_search"),
+        ("Wróć do ruin", "ancient_ruins")
+    ] return False Nothing False,
+
+    Room "read_ancient_book" "Otwierasz starożytną księgę..." [
+        ("Wróć do świątyni", "temple_main")
+    ] (\ps -> do
+        if isPuzzleSolved "ancient_knowledge" ps
+        then do
+            putStrLn "Już poznałeś tajemnice tej księgi."
+            return ps
+        else do
+            putStrLn "Księga zawiera starożytną zagadkę o magii..."
+            putStrLn "'Co to jest to, co może być złamane, ale nigdy nie trzymane?'"
+            putStr "Twoja odpowiedź: "
+            hFlush stdout
+            answer <- getLine
+            let lowerAnswer = map toLower answer
+            if lowerAnswer `elem` ["obietnica", "promise", "słowo", "word"]
+            then do
+                putStrLn "Księga świeci! Poznałeś starożytną tajemnicę!"
+                putStrLn "Otrzymujesz Kodeks Mądrości!"
+                return $ markPuzzleSolved "ancient_knowledge" $ addItem "Kodeks Mądrości" ps
+            else do
+                putStrLn "Księga pozostaje zamknięta. Spróbuj później."
+                return ps
+    ) False Nothing False,
+
+    Room "altar_search" "Przeszukujesz starożytny ołtarz..." [
+        ("Wróć do świątyni", "temple_main")
+    ] (\ps -> do
+        if hasVisited "altar_search" ps
+        then do
+            putStrLn "Ołtarz jest już pusty."
+            return ps
+        else do
+            roll <- randomRIO (1, 10) :: IO Int
+            if roll <= 6
+            then do
+                putStrLn "W sekretnej wnęce ołtarza znajdujesz Miecz Stróżów!"
+                putStrLn "Broń świeci słabym, złotym światłem."
+                return $ markVisited "altar_search" $ addItem "Miecz Stróżów" ps
+            else do
+                putStrLn "Ołtarz ukrywa pułapkę! Ledwo unikasz spadających kamieni."
+                putStrLn "Nic wartościowego tu nie ma."
+                return $ markVisited "altar_search" ps
+    ) False Nothing False,
+
+    Room "guard_ruins" "Ruiny dawnej strażnicy. Połamane mury i zardzewiała broń..." [
+        ("Przeszukaj zbrojownię", "armory_search"),
+        ("Wróć do ruin", "ancient_ruins")
+    ] return False Nothing False,
+
+    Room "armory_search" "Przeszukujesz resztki zbrojowni..." [
+        ("Wróć do strażnicy", "guard_ruins")
+    ] (\ps -> do
+        if hasVisited "armory_search" ps
+        then do
+            putStrLn "Zbrojownia została już przeszukana."
+            return ps
+        else do
+            putStrLn "Wśród połamanej broni znajdujesz dobrze zachowaną Tarczę Obrońców!"
+            putStrLn "Tarcza jest ciężka, ale wytrzymała."
+            return $ markVisited "armory_search" $ addItem "Tarcza Obrońców" ps
+    ) False Nothing False,
+
+    Room "crypt_entrance" "Wejście do podziemnej krypty. Kamienne schody prowadzą w ciemność." [
+        ("Zejdź do krypty", "crypt_main"),
+        ("Wróć do ruin", "ancient_ruins")
+    ] (\ps -> do
+        putStrLn "Z głębi krypty wydobywa się zimny wiatr..."
+        putStrLn "Słyszysz odległe jęki i szelesty."
+        return ps
+    ) False Nothing False,
+
+    Room "crypt_main" "Jesteś w głównej komorze krypty. Wszędzie są starożytne sarkofagi i kości." [
+        ("Przeszukaj sarkofagi", "crypt_search"),
+        ("Walcz z duchem strażnika!", "fight_guardian_spirit"),
+        ("Wróć na górę", "crypt_entrance")
+    ] return False Nothing False,
+
+    Room "crypt_search" "Ostrożnie przeszukujesz starożytne sarkofagi..." [
+        ("Wróć do krypty", "crypt_main")
+    ] (\ps -> do
+        if hasVisited "crypt_search" ps
+        then do
+            putStrLn "Sarkofagi są już puste."
+            return ps
+        else do
+            roll <- randomRIO (1, 10) :: IO Int
+            if roll <= 5
+            then do
+                putStrLn "W jednym z sarkofagów znajdujesz Klucz Podziemi!"
+                putStrLn "Klucz jest ozdobiony starożytnymi runami."
+                return $ markVisited "crypt_search" $ addUndergroundKey $ addItem "Klucz Podziemi" ps
+            else do
+                putStrLn "Sarkofagi są puste, pozostały tylko kości i kurz."
+                return $ markVisited "crypt_search" ps
+    ) False Nothing False,
+
+    Room "fight_guardian_spirit" "Walka z Duchem Strażnika!" [
+        ("Wróć do krypty", "crypt_main")
+    ] (\ps -> do
+        if isEnemyDefeated "Duch Strażnika" ps
+        then do
+            putStrLn "Duch został już przepędzony. W krypcie panuje spokój."
+            if "Korona Przodków" `elem` inventory ps
+            then do
+                putStrLn "Już masz Koronę Przodków."
+                return ps
+            else do
+                putStrLn "Na piedestale materializuje się Korona Przodków!"
+                return $ addItem "Korona Przodków" ps
+        else
+            fightSequence guardianSpiritEnemy ps
     ) False Nothing False,
 
     -- PODZIEMIA - POZIOM 1
@@ -946,11 +1236,25 @@ debugState ps = do
 main :: IO ()
 main = do
     clearScreen
-    putStrLn "=== Przygoda: Talizman Losu ==="
-    putStrLn "\nW tej grze możesz znaleźć różne bronie, które pomogą ci w walce."
-    putStrLn "Każda broń ma swoją siłę, która dodaje się do twoich ataków!"
-    putStrLn "Jeśli przegrasz walkę, nie zginiesz - budzisz się bez ekwipunku, ale możesz kontynuować!"
-    putStrLn "\nNaciśnij Enter, aby rozpocząć przygodę..."
+    putStrLn "================================================================"
+    putStrLn "            🏰 PRZYGODA: TALIZMAN LOSU 🏰"
+    putStrLn "================================================================"
+    putStrLn ""
+    putStrLn "W tej epickie przygodzie będziesz poszukiwać legendarnej Korony Władzy!"
+    putStrLn ""
+    putStrLn "🗡️  WALKA: Zbieraj bronie, które zwiększają twoją siłę w walce"
+    putStrLn "🔑 KLUCZE: Znajdź klucze podziemi, aby przejść na głębsze poziomy"
+    putStrLn "🧩 ZAGADKI: Rozwiązuj zagadki, aby zdobyć nagrody"
+    putStrLn "💀 PORAŻKA: Jeśli przegrasz walkę, nie zginiesz - stracisz tylko ekwipunek"
+    putStrLn ""
+    putStrLn "📊 SYSTEM KLUCZY PODZIEMI:"
+    putStrLn "   • Poziom 1 → 2: potrzebny 1 klucz"
+    putStrLn "   • Poziom 2 → 3: potrzebne 2 klucze"  
+    putStrLn "   • Poziom 3: finałowy poziom z Koroną"
+    putStrLn ""
+    putStrLn "Zdobądź Talizman od trolla, aby wejść do podziemi!"
+    putStrLn ""
+    putStrLn "Naciśnij Enter, aby rozpocząć swoją legendę..."
     _ <- getLine
     
     let initialState = PlayerState { 
